@@ -1,0 +1,5 @@
+﻿  IInvFile.cpp
+d:\visual studio workspace\irproject\iinvfile.cpp(687): warning C4101: “idf”: 未引用的局部变量
+d:\visual studio workspace\irproject\iinvfile.cpp(781): warning C4244: “=”: 从“double”转换到“float”，可能丢失数据
+d:\visual studio workspace\irproject\iinvfile.cpp(794): warning C4244: “/=”: 从“double”转换到“float”，可能丢失数据
+  Retrieval.vcxproj -> D:\Visual Studio Workspace\IRProject\Debug\Retrieval.exe
