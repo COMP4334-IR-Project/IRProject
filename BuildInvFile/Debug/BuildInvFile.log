@@ -1,4 +1,0 @@
-﻿  IInvFile.cpp
-d:\visual studio workspace\irproject\iinvfile.cpp(566): warning C4244: “=”: 从“double”转换到“float”，可能丢失数据
-d:\visual studio workspace\irproject\iinvfile.cpp(646): warning C4101: “idf”: 未引用的局部变量
-  BuildInvFile.vcxproj -> D:\Visual Studio Workspace\IRProject\Debug\BuildInvFile.exe
