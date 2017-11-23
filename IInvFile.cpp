@@ -28,6 +28,9 @@ IInvFile::IInvFile() {
 	Files = NULL;
 	rsize = 0;
 	rank = NULL;
+	EDW[0] = 1.0;
+	EDW[1] = 0.1;
+	EDW[2] = 0.01;
 	mysql_init(&conn);
 	if (mysql_real_connect(&conn, "localhost", "root", "123456789", "IRProject", 3306, NULL, 0)) {
 		mysql_query(&conn, "SET NAMES GBK");	// set coding style, or cannot diplay Chinese in console
@@ -303,7 +306,25 @@ void IInvFile::SaveInvFile(){
 /* save the data in file f
 */
 void IInvFile::WriteInvFile(char * f) {
-
+	FILE * fp = fopen(f, "wb");		// open the file for writing
+	hnode * w;
+	post * k;
+	if ((hsize > 0) && (htable != NULL)) {	// Is there a hash table?
+		for (int i = 0; i < hsize; i++) {	// For each hash table entry do
+			w = htable[i];		// Go through each hash node
+			while (w != NULL) {
+				fprintf(fp, "%s %d:", w->term, w->df);
+				k = w->posting;	// Go through each post node
+				while (k != NULL) {
+					fprintf(fp, "%d %d,", k->docid, k->freq);
+					k = k->next;	// next post node
+				}
+				fprintf(fp, "\r\n");
+				w = w->next;		// next hash node
+			}
+		}
+	}
+	fclose(fp);				// close the file
 }
 
 
@@ -445,9 +466,8 @@ void IInvFile::ReadPostFile(char * f){
 			}
 			else next = false;
 		} while (next == true);
-	}else {
-		printf("Aborted: no hash table\r\n");
 	}
+	else printf("Aborted: no hash table\r\n");
 	fclose(fp);
 }
 
@@ -489,7 +509,6 @@ DocRec * IInvFile::CalcDocLen() {
 	double idf;
 	double idf2;
 	double resu;
-	int len_square = 0;
 	hnode * h = NULL;
 	post * p = NULL;
 
@@ -559,6 +578,38 @@ void IInvFile::SaveDocRec(){
 /* save data in doclen file
 */
 void IInvFile::WriteDocRec(char * f) {
+	FILE * fp;
+	FILE * fpf;
+	int docid = 0;
+	char name[100];
+	char path[200];
+
+	fpf = fopen("..//file.txt", "rb");
+	if (!fpf) {
+		printf("file file open fail!\n");
+		system("pause");
+		exit(0);
+	}
+
+	while (!feof(fpf)) {
+		fscanf(fpf, "%d %d @ %s %s", &docid, &wordcount, &(name[0]), &(path[0]));
+		path = replaceAll(&(path[0]), '\\', "\\\\");
+		//printf("%s", path);
+		//if (docid > 100) { break;	}
+		Files[docid].dname = _strdup(name);
+	}
+
+	if ((MaxDocid > 0) && (Files != NULL)) {
+		fp = fopen(f, "wb");
+		fprintf(fp, "%d\r\n", MaxDocid + 1);
+		for (int i = 0; i <= MaxDocid; i++) {
+			if (Files[i].docid == -1)
+				fprintf(fp, "%d %s %e %d\r\n", i, Files[i].dname, Files[i].len, Files[i].maxFreq);
+			else
+				fprintf(fp, "%d %s %e %d\r\n", Files[i].docid, Files[i].dname, Files[i].len, Files[i].maxFreq);
+		}
+		fclose(fp);
+	}
 
 }
 
@@ -609,7 +660,9 @@ void IInvFile::LoadDocRec(){
 void IInvFile::ReadDocFile(char * f){
 	FILE * fp;
 	char line[10000];
+	int id;
 	int i = 0;
+	int maxFreq;
 	char str[1000];
 	float doclen;
 
@@ -628,12 +681,12 @@ void IInvFile::ReadDocFile(char * f){
 		MaxDocid--;
 		MakeDocRec();
 		while (fgets(line, 10000, fp) != NULL) {
-			sscanf(line, "%s %e", str, &doclen);
-			Files[i].docid = atoi(_strdup(str));
+			sscanf(line, "%d %s %e %s", &id, str, &doclen, &maxFreq);
+			Files[i].docid = id;
+			Files[i].dname = _strdup(str);
 			Files[i].len = doclen;
-			if (i > MaxDocid) {
-				printf("LoadDocRec error: MaxDocid incorrect [%d,MaxDocid=%d]\r\n", i, MaxDocid);
-			}
+			Files[i].maxFreq = maxFreq;
+			if (i > MaxDocid) printf("LoadDocRec error: MaxDocid incorrect [%d,MaxDocid=%d]\r\n", i, MaxDocid);
 			i++;
 		}
 	}
@@ -673,13 +726,27 @@ char * IInvFile::GotoNextWord(char * s){
 	return q;
 }
 
+/* get query number from each line of query file
+ * param: str-query line
+ * ret: query number
+ */
+int GetQueryNo(char * q) {
+	int num = 0;
+	while (*q >= '0' && *q <= '9') {
+		num *= 10;
+		num += *q - '0';
+		q++;
+	}
+	return num;
+}
+
 /* convert the query string into qTerm link list
  * param: q-query string
  * ret: the pointer to qTerm
  */
 qTerm * IInvFile::GetQueryTerm(char * q) {
 	qTerm * p = NULL;
-	qTerm * query;
+	qTerm * query = NULL;
 	qTerm * newQ;
 	char * s = q;
 	char * w;
@@ -760,13 +827,22 @@ int IInvFile::Edit_Distance(char *a, char *b){
 	return d[lenb];
 }
 
+// Comparison function used by qsort(.): see below
+int compare(const void * aa, const void * bb) {
+	RetRec * a = (RetRec *)aa;
+	RetRec * b = (RetRec *)bb;
+
+	if (a->cossim > b->cossim) return -1;
+	else if (a->cossim < b->cossim) return 1;
+	else return 0;
+}
 
 /* use Boolean Model retrieve query `q`
 * param:
 * ret:
-*/
+
 RetRec * IInvFile::BM_Search(char * exist, char * unexist) {
-	/*char * s = exist;
+	char * s = exist;
 	char * t = unexist;
 	char * w;
 	bool next = true;
@@ -812,8 +888,8 @@ RetRec * IInvFile::BM_Search(char * exist, char * unexist) {
 			}
 		}
 	} while (next);
-	return NULL;*/
-}
+	return NULL;
+}*/
 
 /* use Fuzzy Boolean Model retrieve query `q`
 * param:
@@ -831,9 +907,8 @@ RetRec * IInvFile::FBM_Search(char * q) {
 RetRec * IInvFile::VSM_Search_ED(char *q) {
 	int maxED = 2;		// max tolerable edit distance
 	int distance;
-	char * s = q;
 	qTerm * query;
-	char * w;
+	qTerm * qnode;
 	bool next = true;
 	hnode * h;
 	post * p;
@@ -849,7 +924,13 @@ RetRec * IInvFile::VSM_Search_ED(char *q) {
 		rank[i].cossim = 0;
 	}
 
+	// convert the query string into link list
 	query = GetQueryTerm(q);
+
+	if (!query) {
+		printf("no query!\n");
+		return NULL;
+	}
 
 	// for each word in hash table, decide the 'tolerable term' for the query
 	// and use all these 'tolerable term' to calculate similarity
@@ -857,51 +938,50 @@ RetRec * IInvFile::VSM_Search_ED(char *q) {
 	for (int i = 0; i < hsize; i++) {
 		h = htable[i];
 		while (h) {
-			// decide whether the term in hnode can match the term in query 'q'
-			s = q;
-			next = true;
-			do {
-				w = s;
-				// get one word stem first
-				if ((s = GotoNextWord(s)) == NULL) {
-					next = false;
-				}
-				else {
-					// if s is not the end of query, let the space between w and s be '\0'
-					if (*s != '\0') {
-						*(s - 1) = '\0';
-					}
-					// stem the word w
-					Stemmer.Stem(w);
-				}
-				distance = Edit_Distance(w, h->term);
+
+			// for each term, calculate the edit distance between term in hash node and query node
+			// use while loop for query link list
+			qnode = query;
+			while (qnode) {
+				distance = Edit_Distance(qnode->term, h->term);
+					
 				// if the edit distance between the term in hnode and current term in query is smaller than max tolerable distance
 				// then view them as matching
 				if (distance <= maxED) {
+					qnode->exist = true;
+
 					// add tf of term multiples idf of the token to the power 2 to corresponding document
 					// maybe multiply some predefined weight due to different distance
 					p = h->posting;
 					while (p) {
 						idf = CalcIDF(h->df);
-						rank[p->docid].cossim += p->freq*idf*idf;
+						rank[p->docid].cossim += p->freq*idf*idf*EDW[distance];
 						p = p->next;
 					}
-				}
-			} while (next);
-
+				}					
+				qnode = qnode->next;
+			}
+				
 			// get next hnode
 			h = h->next;
 		}
 	}
-			if (strlen(w) > 0) {
-				printf("Query term does not exist <%s>\n", w);
-			}
 		
+	// print terms that did not match any term in hash table within 'tolerable distance'
+	while (query) {
+		if (!query->exist) {
+			printf("Query term does not exist <%s>\n", query->term);
+		}
+		query = query->next;
+	}
+
 	// for each dot result of document and query, it should be divided by query length multiplying document length
 	// beacause the query length is the same, give it const value 1
 	for (int i = 0; i < MaxDocid; i++) {
 		rank[i].cossim /= Files[i].len;
 	}
+	
+	qsort(rank, MaxDocid + 1, sizeof(RetRec), compare);	// qsort is a C function: sort results
 
 	return rank;
 }
@@ -910,7 +990,7 @@ RetRec * IInvFile::VSM_Search_ED(char *q) {
  * param:
  * ret:
  */
-RetRec * IInvFile::VSM_Search(char * q){
+RetRec * IInvFile::VSM_Search(char * q) {
 	char * s = q;
 	char * w;
 	bool next = true;
@@ -934,7 +1014,8 @@ RetRec * IInvFile::VSM_Search(char * q){
 		// get one word stem first
 		if ((s = GotoNextWord(s)) == NULL) {
 			next = false;
-		}else {
+		}
+		else {
 			// if s is not the end of query, let the space between w and s be '\0'
 			if (*s != '\0') {
 				*(s - 1) = '\0';
@@ -952,7 +1033,8 @@ RetRec * IInvFile::VSM_Search(char * q){
 					rank[k->docid].cossim += k->freq*idf*idf;
 					k = k->next;
 				}
-			}else if (strlen(w) > 0) {
+			}
+			else if (strlen(w) > 0) {
 				printf("Query term does not exist <%s>\n", w);
 			}
 		}
@@ -961,21 +1043,13 @@ RetRec * IInvFile::VSM_Search(char * q){
 	// for each dot result of document and query, it should be divided by query length multiplying document length
 	// beacause the query length is the same, give it const value 1
 	for (int i = 0; i < MaxDocid; i++) {
-		rank[i].cossim /= Files[i].len;
+		rank[i].cossim /= (float)Files[i].len;
 	}
+
+	qsort(rank, MaxDocid + 1, sizeof(RetRec), compare);	// qsort is a C function: sort results
 
 	return rank;
 }
-// Comparison function used by qsort(.): see below
-int compare(const void * aa, const void * bb) {
-	RetRec * a = (RetRec *)aa;
-	RetRec * b = (RetRec *)bb;
-
-	if (a->cossim > b->cossim) return -1;
-	else if (a->cossim < b->cossim) return 1;
-	else return 0;
-}
-
 
 /* print top `num` ranked result records
  * param:
@@ -1000,17 +1074,53 @@ void IInvFile::PrintTop(RetRec * r, int num){
 * ret:
 */
 void IInvFile::Retrieval() {
+	int cho;
+	int count;
 	bool next = true;
 	char cmd[10000];
+	char * temp_cmd;
+	RetRec * temp_rank = (RetRec*)calloc(1000, sizeof(RetRec));
 
 	do {
 		printf("Type the query or \"_quit\" to exit\r\n");
 		gets_s(cmd);
+		temp_cmd = _strdup(cmd);
 		if (strcmp(cmd, "_quit") == 0) {
 			next = false;
 		}else {
+			count = 0;
+			/*printf("1.VSM\n2.VSM with edit distance\n");
+			scanf("%d%*c", &cho);
+			switch (cho) {
+			case 1: {
+				VSM_Search(cmd);
+				break;
+			}
+			case 2: {
+				VSM_Search_ED(cmd);
+				break;
+			}
+
+			}
+			PrintTop(rank, 10);*/
+			/* compare how many documents in the rank of top 1000 of VSM match those of VSM with ED*/
 			VSM_Search(cmd);
-			PrintTop(rank, 10);
+			for (int i = 0; i < 1000; i++) {
+				temp_rank[i].docid = rank[i].docid;
+				temp_rank[i].cossim = rank[i].cossim;
+			}
+			VSM_Search_ED(temp_cmd);
+			for (int i = 0; i < 1000; i++) {
+				for (int j = 0; j < 1000; j++) {
+					if (temp_rank[i].docid == rank[j].docid) {
+						count++;
+						printf("VSM   : [%d]\t%d\t%s\t%f\r\n", i + 1, temp_rank[i].docid, Files[temp_rank[i].docid].dname, temp_rank[i].cossim);
+						printf("VSM_ED: [%d]\t%d\t%s\t%f\r\n", j + 1, rank[j].docid, Files[rank[j].docid].dname, rank[j].cossim);
+					}
+				}
+			}
+			printf("total match number: %d\n", count);
+
 		}
 	} while (next == true);
 }
@@ -1021,8 +1131,12 @@ void IInvFile::Retrieval() {
  */
 void IInvFile::Retrieval(char * f){
 	FILE * fp;
+	FILE * fpr;
 	char query[10000];
-	
+	char fname[100];
+	int queryNo = 0;
+	sprintf(fname,"%s_result",f);
+
 	// open retrieval file
 	fp = fopen(f,"rb");
 	if (!fp) {
@@ -1030,19 +1144,31 @@ void IInvFile::Retrieval(char * f){
 		system("pause");
 		exit(0);
 	}
-	
-	while (fgets(query, 10000, fp) != NULL) {
-		VSM_Search(query);
-		PrintTop(rank, 10);
+
+	fpr = fopen(fname, "wb");
+	if (!fp) {
+		printf("File %s open fails!\n", fname);
 		system("pause");
+		exit(0);
 	}
 
+	while (fgets(query, 10000, fp) != NULL) {
+		queryNo = GetQueryNo(query);
+		VSM_Search(query);
+		PrintTop(rank, 10);
+		SaveResult(fpr,queryNo,1000);
+	}
+
+	fclose(fp);
+	fclose(fpr);
 }
 
 /* save the result in file `f`
  * param:
  * ret:
  */
-void IInvFile::SaveResult(char * f, int num){
-	
+void IInvFile::SaveResult(FILE * fp, int queryNo, int num){
+	for (int i = 0; i < num; i++) {
+		fprintf(fp, "%d Q0 %s %d %.1f HKPU-1\r\n", queryNo, Files[rank[i].docid].dname, (i + 1), rank[i].cossim);
+	}
 }
