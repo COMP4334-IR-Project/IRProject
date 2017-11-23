@@ -117,8 +117,9 @@ public:
 	int rsize;								// rank size
 	RetRec * rank;							// ranked result records
 	stemmer Stemmer;						// stemmer to stem query word
+	float EDW[3];							// edit distance weight
 	char * GotoNextWord(char * s);			// get next word in query
-	qTerm * GetQueryTerm(char * q);					// convert the query string into qTerm link list
+	qTerm * GetQueryTerm(char * q);			// convert the query string into qTerm link list
 	int Edit_Distance(char *a, char *b);	// caluculate edit distance between string a and string b
 	RetRec * BM_Search(char * exist, char * unexist);			// use Boolean Model to retrieve query `q`
 	RetRec * FBM_Search(char * q);			// use Fuzzy Boolean Model to retrieve query `q`
@@ -127,7 +128,7 @@ public:
 	void PrintTop(RetRec * r, int num);		// print top `num` ranked result records
 	void Retrieval();						// retrieve with command in console
 	void Retrieval(char * f);				// retrieve all querys in file `f`
-	void SaveResult(char * f, int num);		// save the result in file `f`
+	void SaveResult(FILE * fp, int queryNo, int num);			// save the result in file `f`
 
 };
 
