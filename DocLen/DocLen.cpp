@@ -14,7 +14,7 @@ int main()
  	InvFile.MakeHashTable(13023973);
 
 	printf("Loading Inverted File\r\n");
-	InvFile.LoadInvFile();
+	InvFile.ReadPostFile("..//InvFile.txt");
 
 	printf("Initializing Document Records (size = %d)\r\n", InvFile.MaxDocid + 1);
 	InvFile.MakeDocRec();
@@ -23,7 +23,7 @@ int main()
 	InvFile.CalcDocLen();
 
 	printf("Save Document Lengths\r\n");
-	InvFile.SaveDocRec();
+	InvFile.WriteDocRec("..//DocLen.txt");
 
 	system("pause");
 
