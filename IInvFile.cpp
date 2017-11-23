@@ -1,21 +1,13 @@
-#include <windows.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <iostream>
 #include <string.h>
 #include <math.h>
-#include <mysql.h>
-#include "winsock.h" 
-#pragma comment(lib,"libmySQL.lib") 
+
+
 
 #include "IInvFile.h"
-
-// mysql related const attribute;
-//const char IInvFile::user[] = "root";				// username
-//const char IInvFile::pswd[] = "123456789";			// password
-//const char IInvFile::hostname[] = "localhost";		// hostname
-//const char IInvFile::database[] = "IRProject";		// database name
-//const int IInvFile::port = 3306;			// server port
 
 /* Constructor
  * param: void
@@ -31,14 +23,6 @@ IInvFile::IInvFile() {
 	EDW[0] = 1.0;
 	EDW[1] = 0.1;
 	EDW[2] = 0.01;
-	mysql_init(&conn);
-	if (mysql_real_connect(&conn, "localhost", "root", "123456789", "IRProject", 3306, NULL, 0)) {
-		mysql_query(&conn, "SET NAMES GBK");	// set coding style, or cannot diplay Chinese in console
-	}else {
-		printf("connection fails!\r\n");
-		system("pause");
-		exit(0);
-	}
 }
 
 /* Deconstructor
@@ -252,56 +236,6 @@ double IInvFile::CalcIDF(int df){
 	return idf;
 }
 
-/* save the data in mysql, use two table: token and posting
- * param: void
- * ret: void
- */
-void IInvFile::SaveInvFile(){
-	int * count = (int*)calloc(hsize,sizeof(int));
-	for (int i = 0; i < hsize; i++) {
-		*(count + i) = 0;
-	}
-	printf("\nhsize=%d\n\n", hsize);
-	if (htable == NULL) {
-		printf("Hash table does not exist!\r\n");
-		return;
-	}
-	hnode * h;
-	post * p;
-	char sql[1000];
-
-	// save hash table into database
-	for (int i = 0; i < hsize; i++) {
-		h = htable[i];
-		while (h) {
-			// save term string and df into table `token`
-			sprintf(sql, "insert into token values(\"%s\",%d)", h->term, h->df);
-			if (mysql_query(&conn, sql)) {
-				printf("error:%s\n", mysql_error(&conn));
-			}
-
-			// save posting list into table `posting`
-			p = h->posting;
-			while (p) {
-				sprintf(sql, "insert into posting values(\"%s\",%d,%d)", h->term, p->docid, p->freq);
-				if (mysql_query(&conn, sql)) {
-					printf("error:%s\n", mysql_error(&conn));
-				}
-				p = p->next;
-			}
-
-			h = h->next;
-		}
-		*(count + i) = 1;
-	}
-
-	for (int i = 0; i < hsize; i++) {
-		if (*(count + i) == 0) {
-			printf("the %d th hnode is not visited.\n", *(count + i));
-		}
-	}
-
-}
 
 /* save the data in file f
 */
@@ -325,74 +259,6 @@ void IInvFile::WriteInvFile(char * f) {
 		}
 	}
 	fclose(fp);				// close the file
-}
-
-
-/* load the data in token and posting from mysql to memory htable 
- * param:
- * ret:
- */
-void IInvFile::LoadInvFile(){
-	if (!htable) {
-		printf("No Hash Table!\n");
-		exit(0);
-	}
-
-	int res;
-	char sql[200];
-	char * term = NULL;
-	int count = 0;
-
-	// load the document number into maxdocid
-	res = mysql_query(&conn, "select count(*) from doclen");
-	if (!res) {
-		result_1 = mysql_store_result(&conn);
-		if (result_1) {
-			if (sql_row = mysql_fetch_row(result_1)) {
-				MaxDocid = stoi(sql_row[0]);
-			}
-			else {
-				printf("Cannot read MaxDocid!\n");
-				system("pause");
-				exit(0);
-			}
-		}
-		mysql_free_result(result_1);
-	}
-
-	// fetch term in the token table into hash table
-	res = mysql_query(&conn, "select * from token");
-	if (!res) {
-		result_1 = mysql_store_result(&conn);
-		if (result_1) {
-			while (sql_row = mysql_fetch_row(result_1)) {
-				// make node with term atribute
-				count = 0;
-				term = sql_row[0];
-				hnode * h = MakeNode(term);
-				h->posting = NULL;
-
-				// fetch posting in the posting table to posting ptr
-				sprintf(sql, "select * from posting where `term` =\"%s\"", term);
-				res = mysql_query(&conn, sql);
-				if (!res) {
-					result_2 = mysql_store_result(&conn);
-					if (result_2) {
-						// add each posting wiht term into posting list
-						while (sql_row = mysql_fetch_row(result_2)) {
-							hnode * h = FindNode(sql_row[0]);
-							AddPost(h, stoi(sql_row[1]), stoi(sql_row[2]));
-							count++;
-						}
-					}
-					mysql_free_result(result_2);
-				}
-
-				h->df = count;
-			}
-		}
-		mysql_free_result(result_1);
-	}
 }
 
 /* read posting information from file `f`
@@ -483,8 +349,8 @@ void IInvFile::MakeDocRec() {
 	}
 
 	if (MaxDocid > 0) {
-		Files = (DocRec *)calloc(MaxDocid, sizeof(DocRec));
-		for (int i = 0; i < MaxDocid; i++) {
+		Files = (DocRec *)calloc(MaxDocid+1, sizeof(DocRec));
+		for (int i = 0; i <= MaxDocid; i++) {
 			Files[i].docid = i;
 			Files[i].dname = NULL;
 			Files[i].len = 0;
@@ -536,7 +402,7 @@ DocRec * IInvFile::CalcDocLen() {
 	}
 
 	// save square root of each file's sum of td-idf^2
-	for (int i = 0; i < MaxDocid; i++) {
+	for (int i = 0; i <= MaxDocid; i++) {
 		Files[i].len = (float)sqrt((double)Files[i].len);
 	}
 	return Files;
@@ -550,29 +416,42 @@ void IInvFile::ClearDocRec(){
 	if (Files == NULL) {
 		return;
 	}
-	for (int i = 0; i < MaxDocid ; i++) {
+	for (int i = 0; i <= MaxDocid ; i++) {
 		free(Files[i].dname);
 	}
 	free(Files);
 }
 
-/* save data in mysql, use table doclen
- * param:
- * ret:
- */
-void IInvFile::SaveDocRec(){
-	char sql[200];
-	
-	for (int i = 0; i < MaxDocid; i++) {
-		if (i % 10000 == 0) {
-			printf("Saving %d th doclen...\n", i);
-		}
-		sprintf(sql, "update doclen set len=%f,maxFreq=%d where docid=%d", Files[i].len, Files[i].docid, Files[i].maxFreq);
-		if (mysql_query(&conn, sql)) {
-			printf("error:%s\n", mysql_error(&conn));
-		}
+char * replaceAll(char * src, char oldChar, char* newChar) {
+	int len = 0;
+	char * head = src;
+	char * nc = newChar;
+	while (*src != '\0') {
+		src++;
+		len++;
 	}
-	
+	char * p = (char*)malloc(2 * len* sizeof(char*));
+	char * res = p;
+	src = head;
+	while (*src != '\0') {
+		if (*(src) == oldChar) {
+			newChar = nc;
+			while (*newChar != '\0') {
+				*res = *newChar;
+				res++;
+				newChar++;
+			}
+			src++;
+		}
+		else {
+			*res = *src;
+			res++;
+			src++;
+		}
+
+	}
+	*res = '\0';
+	return p;
 }
 
 /* save data in doclen file
@@ -582,7 +461,8 @@ void IInvFile::WriteDocRec(char * f) {
 	FILE * fpf;
 	int docid = 0;
 	char name[100];
-	char path[200];
+	char * path = (char*)malloc(200*sizeof(char));
+	int wordcount;
 
 	fpf = fopen("..//file.txt", "rb");
 	if (!fpf) {
@@ -613,46 +493,6 @@ void IInvFile::WriteDocRec(char * f) {
 
 }
 
-/* load data from mysql to memory Files
- * param:
- * ret:
- */
-void IInvFile::LoadDocRec(){
-	char sql[200];
-	int count = 0;
-	int res;
-
-	// query documemt number
-	sprintf(sql, "select count(*) from doclen");
-	res = mysql_query(&conn, sql);
-	if (!res) {
-		result_1 = mysql_store_result(&conn);
-		if (!result_1) {
-			sql_row = mysql_fetch_row(result_1);
-			// save total number of documents
-			MaxDocid = stoi(sql_row[1]);
-		}
-	}
-
-	// initialize document records list
-	MakeDocRec();
-
-	sprintf(sql, "select * from doclen");
-	res = mysql_query(&conn, sql);
-	if (!res) {
-		result_1 = mysql_store_result(&conn);
-		if (result_1) {
-			while (sql_row = mysql_fetch_row(result_1)) {
-				Files[count].docid = atoi(sql_row[0]);
-				Files[count].dname = _strdup(sql_row[1]);
-				Files[count].maxFreq = stoi(sql_row[2]);
-				Files[count].len = atof(sql_row[3]);
-				count++;
-			}
-		}
-	}
-}
-
 /* read document information from file `f`
  * param:
  * ret:
@@ -681,7 +521,7 @@ void IInvFile::ReadDocFile(char * f){
 		MaxDocid--;
 		MakeDocRec();
 		while (fgets(line, 10000, fp) != NULL) {
-			sscanf(line, "%d %s %e %s", &id, str, &doclen, &maxFreq);
+			sscanf(line, "%d %s %e %d", &id, str, &doclen, &maxFreq);
 			Files[i].docid = id;
 			Files[i].dname = _strdup(str);
 			Files[i].len = doclen;
@@ -855,7 +695,7 @@ RetRec * IInvFile::BM_Search(char * exist, char * unexist) {
 		free(rank);
 	}
 	rank = (RetRec *)calloc(MaxDocid + 1, sizeof(RetRec));
-	for (int i = 0; i < MaxDocid; i++) {
+	for (int i = 0; i <= MaxDocid; i++) {
 		rank[i].docid = Files[i].docid;
 		rank[i].cossim = 1;
 	}
@@ -919,7 +759,7 @@ RetRec * IInvFile::VSM_Search_ED(char *q) {
 		free(rank);
 	}
 	rank = (RetRec *)calloc(MaxDocid + 1, sizeof(RetRec));
-	for (int i = 0; i < MaxDocid; i++) {
+	for (int i = 0; i <= MaxDocid; i++) {
 		rank[i].docid = Files[i].docid;
 		rank[i].cossim = 0;
 	}
@@ -977,7 +817,7 @@ RetRec * IInvFile::VSM_Search_ED(char *q) {
 
 	// for each dot result of document and query, it should be divided by query length multiplying document length
 	// beacause the query length is the same, give it const value 1
-	for (int i = 0; i < MaxDocid; i++) {
+	for (int i = 0; i <= MaxDocid; i++) {
 		rank[i].cossim /= Files[i].len;
 	}
 	
@@ -1003,7 +843,7 @@ RetRec * IInvFile::VSM_Search(char * q) {
 		free(rank);
 	}
 	rank = (RetRec *)calloc(MaxDocid + 1, sizeof(RetRec));
-	for (int i = 0; i < MaxDocid; i++) {
+	for (int i = 0; i <= MaxDocid; i++) {
 		rank[i].docid = Files[i].docid;
 		rank[i].cossim = 0;
 	}
@@ -1042,7 +882,7 @@ RetRec * IInvFile::VSM_Search(char * q) {
 
 	// for each dot result of document and query, it should be divided by query length multiplying document length
 	// beacause the query length is the same, give it const value 1
-	for (int i = 0; i < MaxDocid; i++) {
+	for (int i = 0; i <= MaxDocid; i++) {
 		rank[i].cossim /= (float)Files[i].len;
 	}
 
@@ -1169,6 +1009,6 @@ void IInvFile::Retrieval(char * f){
  */
 void IInvFile::SaveResult(FILE * fp, int queryNo, int num){
 	for (int i = 0; i < num; i++) {
-		fprintf(fp, "%d Q0 %s %d %.1f HKPU-1\r\n", queryNo, Files[rank[i].docid].dname, (i + 1), rank[i].cossim);
+		fprintf(fp, "%d Q0 %s %d %f TIM-06\n", queryNo, Files[rank[i].docid].dname, (i), rank[i].cossim);
 	}
 }
