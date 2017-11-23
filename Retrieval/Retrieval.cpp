@@ -11,15 +11,20 @@ IInvFile InvFile;
 
 int main()
 {
+	char fname[50] = "queryTDN";
 	InvFile.MakeHashTable(13023973);
 
 	printf("Load Inverted File......\n");
-	InvFile.LoadInvFile();
+	InvFile.ReadPostFile("..//InvFile.txt");
+	//InvFile.LoadInvFile();
 	printf("Load Document Length File......\n");
-	InvFile.LoadDocRec();
+	InvFile.ReadDocFile("..//DocLen.txt");
+	//InvFile.LoadDocRec();
 
 	printf("Begin to retrieve...\n");
-	InvFile.Retrieval();
+	InvFile.Retrieval(fname);
+
+	system("pause");
 	return 0;
 }
 
