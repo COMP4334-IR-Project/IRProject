@@ -677,13 +677,87 @@ int compare(const void * aa, const void * bb) {
 	else return 0;
 }
 
-/* use Boolean Model retrieve query `q`
+// Comparison  function used by qsort(.): see blow
+int compareCount(const void *aa, const void * bb) {
+	RetRec * a = (RetRec *)aa;
+	RetRec * b = (RetRec *)bb;
+
+	if (a->cossim > b->cossim) return -1;
+	else if (a->cossim < b->cossim) return 1;
+	else return 0;
+}
+//
+//// use Boolean Model retrieve query `q`
+////* param:
+////* ret:
+//
+//RetRec * IInvFile::BM_Search(char * exist, char * unexist) {
+//	char * s = exist;
+//	char * t = unexist;
+//	char * w;
+//	bool next = true;
+//	hnode * h;
+//	post * k;
+//	float idf;
+//
+//	// initialize result set
+//	if (!rank) {
+//		free(rank);
+//	}
+//	rank = (RetRec *)calloc(MaxDocid + 1, sizeof(RetRec));
+//	for (int i = 0; i <= MaxDocid; i++) {
+//		rank[i].docid = Files[i].docid;
+//		rank[i].cossim = 1;
+//	}
+//
+//	// for each word in exist string
+//	do {
+//		w = t;
+//		// get one word stem first
+//		if ((s = GotoNextWord(s)) == NULL) {
+//			next = false;
+//		}
+//		else {
+//			// if s is not the end of query, let the space between w and s be '\0'
+//			if (*s != '\0') {
+//				*(s - 1) = '\0';
+//			}
+//			// stem the word w
+//			Stemmer.Stem(w);
+//			// find the hnode of this stem in hash table
+//			h = FindNode(w);
+//			if (!h) {
+//				k = h->posting;
+//				while (k) {
+//					rank[k->docid].cossim = 1;
+//					k = k->next;
+//				}
+//			}
+//			else if (strlen(w) > 0) {
+//				printf("Query term does not exist <%s>\n", w);
+//			}
+//		}
+//	} while (next);
+//	return NULL;
+//}
+
+/* use Fuzzy Boolean Model retrieve query `q`
 * param:
 * ret:
+*/
+/*
+RetRec * IInvFile::FBM_Search(char * q) {
 
-RetRec * IInvFile::BM_Search(char * exist, char * unexist) {
-	char * s = exist;
-	char * t = unexist;
+	return NULL;
+}
+*/
+
+/* use Boolean Model to retrieve query 'q'
+* param:
+* ret:
+*/
+RetRec * IInvFile::BM_Search(char * q){
+	char * s = q;
 	char * w;
 	bool next = true;
 	hnode * h;
@@ -697,12 +771,12 @@ RetRec * IInvFile::BM_Search(char * exist, char * unexist) {
 	rank = (RetRec *)calloc(MaxDocid + 1, sizeof(RetRec));
 	for (int i = 0; i <= MaxDocid; i++) {
 		rank[i].docid = Files[i].docid;
-		rank[i].cossim = 1;
+		rank[i].cossim = 0;
 	}
 
-	// for each word in exist string
+	// for each word in query
 	do {
-		w = t;
+		w = s;
 		// get one word stem first
 		if ((s = GotoNextWord(s)) == NULL) {
 			next = false;
@@ -716,10 +790,13 @@ RetRec * IInvFile::BM_Search(char * exist, char * unexist) {
 			Stemmer.Stem(w);
 			// find the hnode of this stem in hash table
 			h = FindNode(w);
-			if (!h) {
+			if (h) {
+				// for each posting of the token
+				// add tf of term multiples idf of the token to the power 2 to corresponding document
 				k = h->posting;
 				while (k) {
-					rank[k->docid].cossim = 1;
+					idf = CalcIDF(h->df);
+					rank[k->docid].cossim += 1;
 					k = k->next;
 				}
 			}
@@ -728,16 +805,68 @@ RetRec * IInvFile::BM_Search(char * exist, char * unexist) {
 			}
 		}
 	} while (next);
-	return NULL;
-}*/
 
-/* use Fuzzy Boolean Model retrieve query `q`
-* param:
-* ret:
-*/
+		qsort(rank, MaxDocid + 1, sizeof(RetRec), compareCount);	// qsort is a C function: sort results
+
+	return rank;
+}
+
 RetRec * IInvFile::FBM_Search(char * q) {
+	char * s = q;
+	char * w;
+	bool next = true;
+	hnode * h;
+	post * k;
+	float idf;
 
-	return NULL;
+	// initialize result set
+	if (!rank) {
+		free(rank);
+	}
+	rank = (RetRec *)calloc(MaxDocid + 1, sizeof(RetRec));
+	for (int i = 0; i <= MaxDocid; i++) {
+		rank[i].docid = Files[i].docid;
+		rank[i].cossim = 0;
+	}
+
+	// for each word in query
+	do {
+		w = s;
+		// get one word stem first
+		if ((s = GotoNextWord(s)) == NULL) {
+			next = false;
+		}
+		else {
+			// if s is not the end of query, let the space between w and s be '\0'
+			if (*s != '\0') {
+				*(s - 1) = '\0';
+			}
+			// stem the word w
+			Stemmer.Stem(w);
+			// find the hnode of this stem in hash table
+			h = FindNode(w);
+			if (h) {
+				// for each posting of the token
+				// add tf of term multiples idf of the token to the power 2 to corresponding document
+				k = h->posting;
+				while (k) {
+					int tf = k->freq;
+					int idf = h->df;
+					float m = 1 / (1 + exp(-1 * idf)*(1 + exp(-1 * tf)));
+					
+					rank[k->docid].cossim += m;
+					k = k->next;
+				}
+			}
+			else if (strlen(w) > 0) {
+				printf("Query term does not exist <%s>\n", w);
+			}
+		}
+	} while (next);
+
+	qsort(rank, MaxDocid + 1, sizeof(RetRec), compareCount);	// qsort is a C function: sort results
+
+	return rank;
 }
 
 /* use VSM with EDIT DISTANCE CONSTRAINT to retrieve query 'q'
@@ -909,6 +1038,7 @@ void IInvFile::PrintTop(RetRec * r, int num){
 	}
 }
 
+
 /* retrieve with command in console
 * param:
 * ret:
@@ -920,7 +1050,6 @@ void IInvFile::Retrieval() {
 	char cmd[10000];
 	char * temp_cmd;
 	RetRec * temp_rank = (RetRec*)calloc(1000, sizeof(RetRec));
-
 	do {
 		printf("Type the query or \"_quit\" to exit\r\n");
 		gets_s(cmd);
@@ -969,13 +1098,12 @@ void IInvFile::Retrieval() {
  * param:
  * ret:
  */
-void IInvFile::Retrieval(char * f){
+void IInvFile::Retrieval(char * f, int mode = 0, bool normalization = true){
 	FILE * fp;
 	FILE * fpr;
 	char query[10000];
 	char fname[100];
 	int queryNo = 0;
-	sprintf(fname,"%s_result",f);
 
 	// open retrieval file
 	fp = fopen(f,"rb");
@@ -985,8 +1113,21 @@ void IInvFile::Retrieval(char * f){
 		exit(0);
 	}
 
+	if (mode == 0) {
+		sprintf(fname, "%s_VSMresult", f);
+	}
+	else if (mode == 1) {
+		sprintf(fname, "%s_VSMEDresult", f);
+	}
+	else if (mode == 3) {
+		sprintf(fname, "%s_BMresult", f);
+	}
+	else if (mode == 4) {
+		sprintf(fname, "%s_FBMresult", f);
+	}
+
 	fpr = fopen(fname, "wb");
-	if (!fp) {
+	if (!fpr) {
 		printf("File %s open fails!\n", fname);
 		system("pause");
 		exit(0);
@@ -994,7 +1135,21 @@ void IInvFile::Retrieval(char * f){
 
 	while (fgets(query, 10000, fp) != NULL) {
 		queryNo = GetQueryNo(query);
-		VSM_Search(query);
+		
+		// model selection
+		if (mode == 0) {
+			VSM_Search(query);
+		}
+		else if (mode == 1) {
+			VSM_Search_ED(query);
+		}
+		else if (mode == 3) {
+			BM_Search(query);
+		}
+		else if (mode == 4) {
+			FBM_Search(query);
+		}
+
 		PrintTop(rank, 10);
 		SaveResult(fpr,queryNo,1000);
 	}
