@@ -1,6 +1,6 @@
 ///////////////////////////////////////////////////////////////////////////////////////
 //																					 //
-// Author: Eric LIU																	 //
+// Author: Eric LIU;													//
 // Date: 2017.10																	 //
 // Eric LIU (c) 2017																 //
 //																					 //
@@ -50,7 +50,7 @@ typedef struct _DocRec {
 // Retrieval record
 typedef struct _RetRec {
 	int docid;				// document ID
-	float cossim;			// cosine similarity
+	float cossim;			// cumulative weight 
 } RetRec;
 
 // query term link list
@@ -72,12 +72,13 @@ public:
 //	static const char hostname[];		// hostname
 //	static const char database[];		// database name
 //	static const int port;		// server port        
+/*
 	MYSQL conn;							// connection with database
 	MYSQL_RES * result_1;				// query result
 	MYSQL_RES * result_2;				// query result
 	MYSQL_ROW sql_row;					// one row of query result
 	MYSQL_FIELD *fd;					// one field of query result
-
+	*/
 	// Hash related attributes and functions-finished/
 	int hsize;						// hash table size
 	int hvalue;						// hash value of current term
@@ -122,12 +123,14 @@ public:
 	qTerm * GetQueryTerm(char * q);			// convert the query string into qTerm link list
 	int Edit_Distance(char *a, char *b);	// caluculate edit distance between string a and string b
 	RetRec * BM_Search(char * exist, char * unexist);			// use Boolean Model to retrieve query `q`
+	RetRec *BM_Search(char * q);
 	RetRec * FBM_Search(char * q);			// use Fuzzy Boolean Model to retrieve query `q`
 	RetRec * VSM_Search(char * q);			// use VSM to retrieve query `q`
 	RetRec * VSM_Search_ED(char *q);		// use VSM with EDIT DISTANCE CONSTRAINT to retrieve query 'q'
 	void PrintTop(RetRec * r, int num);		// print top `num` ranked result records
+	void IInvFile::PrintTopForBoolean(RetRec * r, int num); // print top 'num' ranked result records for boolean
 	void Retrieval();						// retrieve with command in console
-	void Retrieval(char * f);				// retrieve all querys in file `f`
+	void Retrieval(char * f, int mode, bool normalization);				// retrieve all querys in file `f`
 	void SaveResult(FILE * fp, int queryNo, int num);			// save the result in file `f`
 
 };
