@@ -9,11 +9,13 @@
 
 IInvFile InvFile;
 
-int main()
+int main(int argc, char *argv[])
 {
 	char fname[50] = "queryTDN";
 	InvFile.MakeHashTable(13023973);
-
+	int mode;
+	mode = (int) argv[1];
+	
 	printf("Load Inverted File......\n");
 	InvFile.ReadPostFile("..//InvFile.txt");
 	//InvFile.LoadInvFile();
@@ -22,7 +24,7 @@ int main()
 	//InvFile.LoadDocRec();
 
 	printf("Begin to retrieve...\n");
-	InvFile.Retrieval(fname);
+	InvFile.Retrieval(fname, mode, true);
 
 	system("pause");
 	return 0;
